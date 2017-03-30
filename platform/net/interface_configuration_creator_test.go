@@ -151,6 +151,86 @@ func describeInterfaceConfigurationCreator() {
 					})
 				})
 			})
+
+			Context("And the network has a alias", func() {
+				BeforeEach(func() {
+					staticNetwork.Alias = "static-interface-name"
+					networks["foo"] = staticNetwork
+					interfacesByMAC["fake-static-mac-address"] = "any-interface-name"
+				})
+
+				It("creates an interface configuration when matching interface exists", func() {
+					staticInterfaceConfigurations, dhcpInterfaceConfigurations, err := interfaceConfigurationCreator.CreateInterfaceConfigurations(networks, interfacesByMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(staticInterfaceConfigurations).To(Equal([]StaticInterfaceConfiguration{
+						StaticInterfaceConfiguration{
+							Name:                "any-interface-name",
+							Address:             "1.2.3.4",
+							Netmask:             "255.255.255.0",
+							Network:             "1.2.3.0",
+							IsDefaultForGateway: false,
+							Broadcast:           "1.2.3.255",
+							Mac:                 "fake-static-mac-address",
+							Gateway:             "3.4.5.6",
+						},
+					}))
+
+					Expect(len(dhcpInterfaceConfigurations)).To(Equal(0))
+				})
+			})
+
+			Context("And the network has postup routes", func() {
+				BeforeEach(func() {
+					staticNetwork.Routes = []boshsettings.Route{
+						boshsettings.Route{
+							Destination: "10.0.0.0",
+							Gateway:     "3.4.5.6",
+							NetMask:     "255.0.0.0",
+						},
+						boshsettings.Route{
+							Destination: "161.26.0.0",
+							Gateway:     "3.4.5.6",
+							NetMask:     "255.255.0.0",
+						},
+					}
+					staticNetwork.Alias = "static-interface-name"
+					networks["foo"] = staticNetwork
+					interfacesByMAC["fake-static-mac-address"] = "any-interface-name"
+				})
+
+				It("creates an interface configuration when matching interface exists", func() {
+					staticInterfaceConfigurations, dhcpInterfaceConfigurations, err := interfaceConfigurationCreator.CreateInterfaceConfigurations(networks, interfacesByMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(staticInterfaceConfigurations).To(Equal([]StaticInterfaceConfiguration{
+						StaticInterfaceConfiguration{
+							Name:                "any-interface-name",
+							Address:             "1.2.3.4",
+							Netmask:             "255.255.255.0",
+							Network:             "1.2.3.0",
+							IsDefaultForGateway: false,
+							Broadcast:           "1.2.3.255",
+							Mac:                 "fake-static-mac-address",
+							Gateway:             "3.4.5.6",
+							PostUpRoutes: boshsettings.Routes{
+								boshsettings.Route{
+									Destination: "10.0.0.0",
+									Gateway:     "3.4.5.6",
+									NetMask:     "255.0.0.0",
+								},
+								boshsettings.Route{
+									Destination: "161.26.0.0",
+									Gateway:     "3.4.5.6",
+									NetMask:     "255.255.0.0",
+								},
+							},
+						},
+					}))
+
+					Expect(len(dhcpInterfaceConfigurations)).To(Equal(0))
+				})
+			})
 		})
 
 		Context("Multiple networks", func() {
@@ -237,6 +317,136 @@ func describeInterfaceConfigurationCreator() {
 						_, _, err := interfaceConfigurationCreator.CreateInterfaceConfigurations(networks, interfacesByMAC)
 						Expect(err).To(HaveOccurred())
 					})
+				})
+			})
+
+			Context("when static network has alias, dhcp network is not allowd to have alias", func() {
+				BeforeEach(func() {
+					staticNetwork.Alias = "static-interface-name"
+					staticNetworkWithoutMAC.Alias = "static-interface-name:1"
+					staticNetworkWithoutMAC.IP = "1.2.3.5"
+					networks["foo"] = staticNetwork
+					networks["bar"] = dhcpNetwork
+					networks["baz"] = staticNetworkWithoutMAC
+					interfacesByMAC[staticNetwork.Mac] = "static-interface-name"
+					interfacesByMAC[dhcpNetwork.Mac] = "dhcp-interface-name"
+				})
+
+				It("creates interface configurations for each network when matching interfaces exist", func() {
+					staticInterfaceConfigurations, _, err := interfaceConfigurationCreator.CreateInterfaceConfigurations(networks, interfacesByMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(staticInterfaceConfigurations).To(ConsistOf([]StaticInterfaceConfiguration{
+						{
+							Name:                "static-interface-name",
+							Address:             "1.2.3.4",
+							Netmask:             "255.255.255.0",
+							Network:             "1.2.3.0",
+							Broadcast:           "1.2.3.255",
+							IsDefaultForGateway: false,
+							Mac:                 "fake-static-mac-address",
+							Gateway:             "3.4.5.6",
+						},
+						{
+							Name:                "static-interface-name:1",
+							Address:             "1.2.3.5",
+							Netmask:             "255.255.255.0",
+							Network:             "1.2.3.0",
+							Broadcast:           "1.2.3.255",
+							IsDefaultForGateway: false,
+							Gateway:             "3.4.5.6",
+						},
+					}))
+				})
+			})
+
+			Context("when static network has postup routes, dhcp network has no postup routes", func() {
+				BeforeEach(func() {
+					staticNetwork.Routes = []boshsettings.Route{
+						boshsettings.Route{
+							Destination: "10.0.0.0",
+							Gateway:     "3.4.5.6",
+							NetMask:     "255.0.0.0",
+						},
+					}
+					staticNetwork.Alias = "static-interface-name"
+					networks["foo"] = staticNetwork
+					networks["bar"] = dhcpNetwork
+					interfacesByMAC[staticNetwork.Mac] = "static-interface-name"
+					interfacesByMAC[dhcpNetwork.Mac] = "dhcp-interface-name"
+				})
+
+				It("creates interface configurations for each network when matching interfaces exist", func() {
+					staticInterfaceConfigurations, _, err := interfaceConfigurationCreator.CreateInterfaceConfigurations(networks, interfacesByMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(staticInterfaceConfigurations).To(ConsistOf([]StaticInterfaceConfiguration{
+						{
+							Name:                "static-interface-name",
+							Address:             "1.2.3.4",
+							Netmask:             "255.255.255.0",
+							Network:             "1.2.3.0",
+							Broadcast:           "1.2.3.255",
+							IsDefaultForGateway: false,
+							Mac:                 "fake-static-mac-address",
+							Gateway:             "3.4.5.6",
+							PostUpRoutes: boshsettings.Routes{
+								boshsettings.Route{
+									Destination: "10.0.0.0",
+									Gateway:     "3.4.5.6",
+									NetMask:     "255.0.0.0",
+								},
+							},
+						},
+					}))
+				})
+			})
+
+			Context("when static network has no postup routes, dhcp network has postup routes", func() {
+				BeforeEach(func() {
+					dhcpNetwork.Routes = []boshsettings.Route{
+						boshsettings.Route{
+							Destination: "10.0.0.0",
+							Gateway:     "3.4.5.6",
+							NetMask:     "255.0.0.0",
+						},
+					}
+					staticNetwork.Alias = "static-interface-name"
+					networks["foo"] = staticNetwork
+					networks["bar"] = dhcpNetwork
+					interfacesByMAC[staticNetwork.Mac] = "static-interface-name"
+					interfacesByMAC[dhcpNetwork.Mac] = "dhcp-interface-name"
+				})
+
+				It("creates interface configurations for each network when matching interfaces exist", func() {
+					staticInterfaceConfigurations, dhcpInterfaceConfigurations, err := interfaceConfigurationCreator.CreateInterfaceConfigurations(networks, interfacesByMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(staticInterfaceConfigurations).To(ConsistOf([]StaticInterfaceConfiguration{
+						{
+							Name:                "static-interface-name",
+							Address:             "1.2.3.4",
+							Netmask:             "255.255.255.0",
+							Network:             "1.2.3.0",
+							Broadcast:           "1.2.3.255",
+							IsDefaultForGateway: false,
+							Mac:                 "fake-static-mac-address",
+							Gateway:             "3.4.5.6",
+						},
+					}))
+
+					Expect(dhcpInterfaceConfigurations).To(ConsistOf([]DHCPInterfaceConfiguration{
+						{
+							Name: "dhcp-interface-name",
+							PostUpRoutes: boshsettings.Routes{
+								boshsettings.Route{
+									Destination: "10.0.0.0",
+									Gateway:     "3.4.5.6",
+									NetMask:     "255.0.0.0",
+								},
+							},
+						},
+					}))
 				})
 			})
 		})

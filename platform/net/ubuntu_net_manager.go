@@ -299,7 +299,8 @@ auto lo
 iface lo inet loopback
 {{ range .DHCPConfigs }}
 auto {{ .Name }}
-iface {{ .Name }} inet dhcp
+iface {{ .Name }} inet dhcp{{ range .PostUpRoutes }}
+post-up route add -net {{ .Destination }} netmask {{ .NetMask }} gw {{ .Gateway }}{{ end }}
 {{ end }}{{ range .StaticConfigs }}
 auto {{ .Name }}
 iface {{ .Name }} inet static
@@ -307,7 +308,8 @@ iface {{ .Name }} inet static
     network {{ .Network }}
     netmask {{ .Netmask }}
 {{ if .IsDefaultForGateway }}    broadcast {{ .Broadcast }}
-    gateway {{ .Gateway }}{{ end }}{{ end }}
+    gateway {{ .Gateway }}{{ end }}{{ range .PostUpRoutes }}
+    post-up route add -net {{ .Destination }} netmask {{ .NetMask }} gw {{ .Gateway }}{{ end }}{{ end }}
 {{ if .DNSServers }}
 dns-nameservers{{ range .DNSServers }} {{ . }}{{ end }}{{ end }}`
 
